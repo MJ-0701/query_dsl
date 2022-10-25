@@ -1,0 +1,24 @@
+ spring:
+
+  # jpa
+  jpa:
+    hibernate:
+      ddl-auto: 'create-drop'
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+    generate-ddl: true
+    defer-datasource-initialization: true
+    database: mysql
+
+  # DB
+  datasource:
+    url: jdbc:mysql://localhost:3306/query_dsl?useSSl=false&useUnicode=true&serverTimezone=Asia/Seoul&allowPublicKeyRetrieval=true&createDatabaseIfNotExist=true
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    username: jack
+    password: jack
+  sql:
+    init:
+      mode: always
+  #      schema-locations: classpath:data.sql
