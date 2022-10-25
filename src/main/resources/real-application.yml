@@ -3,11 +3,12 @@
   # jpa
   jpa:
     hibernate:
-      ddl-auto: 'create-drop'
-    show-sql: true
+      ddl-auto: 'create'
     properties:
       hibernate:
         format_sql: true
+#        show_sql: true # system 로그로 출력 -> 가급적 로그로 출력할것.
+
     generate-ddl: true
     defer-datasource-initialization: true
     database: mysql
@@ -18,7 +19,13 @@
     driver-class-name: com.mysql.cj.jdbc.Driver
     username: jack
     password: jack
-  sql:
-    init:
-      mode: always
+
+ logging:
+   level:
+     org.hibernate.sql: debug
+#     org.hibernate.type: trace
+
+#  sql:
+#    init:
+#      mode: always
   #      schema-locations: classpath:data.sql

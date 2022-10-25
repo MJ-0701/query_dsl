@@ -24,11 +24,10 @@ spring:
 
 
 logging:
+
   file:
     name: ${user.dir}/log/event-check.log
     max-history: 7
     max-size: 10MB
-  level:
-    org.hibernate.sql: debug
-    org.hibernate.type: trace
+
 

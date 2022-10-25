@@ -39,6 +39,9 @@ dependencies {
     //querydsl 추가
     implementation "com.querydsl:querydsl-jpa:${queryDslVersion}"
     implementation "com.querydsl:querydsl-apt:${queryDslVersion}"
+
+    // 쿼리로그
+    implementation "com.github.gavlyukovskiy:p6spy-spring-boot-starter:1.5.8"
 }
 
 tasks.named('test') {

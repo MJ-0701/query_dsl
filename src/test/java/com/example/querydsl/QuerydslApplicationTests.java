@@ -7,12 +7,14 @@ import org.assertj.core.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.annotation.Commit;
 import org.springframework.transaction.annotation.Transactional;
 
 import javax.persistence.EntityManager;
 
 @SpringBootTest
 @Transactional
+@Commit // 테스트 코드에 커밋을 해주면 db에 반영이 된다.
 class QuerydslApplicationTests {
 
     @Autowired
