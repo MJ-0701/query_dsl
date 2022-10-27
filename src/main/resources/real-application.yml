@@ -6,6 +6,7 @@
       ddl-auto: 'create'
     properties:
       hibernate:
+        use_sql_comments: true
         format_sql: true
 #        show_sql: true # system 로그로 출력 -> 가급적 로그로 출력할것.
 
