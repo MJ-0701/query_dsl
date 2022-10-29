@@ -2,8 +2,10 @@ package com.example.querydsl;
 
 import com.example.querydsl.entity.Member;
 import com.example.querydsl.entity.QMember;
+import com.example.querydsl.entity.QTeam;
 import com.example.querydsl.entity.Team;
 import com.querydsl.core.QueryResults;
+import com.querydsl.core.Tuple;
 import com.querydsl.jpa.impl.JPAQueryFactory;
 import org.assertj.core.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
@@ -13,18 +15,21 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.transaction.annotation.Transactional;
 
 import javax.persistence.EntityManager;
+import javax.persistence.EntityManagerFactory;
 import javax.persistence.PersistenceContext;
+import javax.persistence.PersistenceUnit;
 
 import java.util.List;
 
 import static com.example.querydsl.entity.QMember.*;
+import static com.example.querydsl.entity.QTeam.*;
 import static org.assertj.core.api.Assertions.*;
 
 @SpringBootTest
 @Transactional
 public class QueryDslBasicTest {
 
-    @Autowired
+    @PersistenceContext
     EntityManager em;
 
     JPAQueryFactory queryFactory;
@@ -188,5 +193,182 @@ public class QueryDslBasicTest {
         assertThat(queryResults.getResults().size()).isEqualTo(2);
 
     }
+
+    /* 집합 함수
+    * JPQL
+    * SELECT
+    * COUNT(m), // 회원수
+    * SUN(m.age), // 나이 합
+    * AVG(m.age), // 평균 나이
+    * MAX(m.age) // 최대 나이
+    * MIN(m.age) // 최소 나이
+    * from Member m
+    * */
+
+    @Test
+    void aggregation() throws Exception {
+
+        List<Tuple> result = queryFactory.select( // 튜플 -> 데이터 타입이 여러개일때 (실무에선 dto로 뽑아오기 떄문에 잘 쓰이진 않음.)
+                        member.count(),
+                        member.age.sum(),
+                        member.age.avg(),
+                        member.age.max(),
+                        member.age.min())
+                .from(member)
+                .fetch();
+
+        Tuple tuple = result.get(0);
+        assertThat(tuple.get(member.count())).isEqualTo(4);
+        assertThat(tuple.get(member.age.sum())).isEqualTo(100);
+        assertThat(tuple.get(member.age.avg())).isEqualTo(25);
+        assertThat(tuple.get(member.age.max())).isEqualTo(40);
+        assertThat(tuple.get(member.age.min())).isEqualTo(10);
+
+    }
+
+    /*
+    * 팀의 이름과 각 팀의 평균 연령을구해라.
+    * */
+    @Test
+    void group() throws Exception{
+
+        List<Tuple> result = queryFactory.select(team.name, member.age.avg())
+                .from(member)
+                .join(member.team, team)
+                .groupBy(team.name)
+                .fetch();
+
+        Tuple teamA = result.get(0);
+        Tuple teamB = result.get(1);
+
+        assertThat(teamA.get(team.name)).isEqualTo("teamA");
+        assertThat(teamA.get(member.age.avg())).isEqualTo(15);
+
+        assertThat(teamB.get(team.name)).isEqualTo("teamB");
+        assertThat(teamB.get(member.age.avg())).isEqualTo(35);
+    }
+
+    /*
+    * 기본 조인
+    * join(조인 대상, 별칭으로 사용할 Q타입)
+    * 팀 A에 소속된 모든 회원
+    * */
+
+    @Test
+    void join() throws Exception {
+
+        List<Member> result = queryFactory.selectFrom(member)
+                .join(member.team, team)
+//                .leftJoin(member.team, team)
+                .where(team.name.eq("teamA"))
+                .fetch();
+        assertThat(result).extracting("userName").containsExactly("member1", "member2");
+    }
+
+    /*
+    * 세타 조인
+    * 회원의 이름이 팀 이름과 같은 회원 조회(억지성 예제)
+    * 연관관계 없이 조인
+    * 외부조인 불가능 -> 조인 on을 사용하면 외부조인 가능
+    * */
+    @Test
+    void thetaJoin() {
+        em.persist(new Member("teamA"));
+        em.persist(new Member("teamB"));
+
+        List<Member> result = queryFactory
+                .select(member) // 기존에는 멤버와 연관관계가 있는 team 을 찍은 담에 team을 가져왔지만 세타 조인은
+                .from(member, team) // 두개를 그냥 나열
+                .where(member.userName.eq(team.name))
+                .fetch();
+
+        assertThat(result)
+                .extracting("userName")
+                .containsExactly("teamA", "teamB");
+    }
+
+    /*
+    * 조인 - on절
+    * ON절을 활용한 조인
+    * 조인 대상 필터링
+    * 연관관계 없는 엔티티 외부 조인
+    * */
+
+    /*
+    * 예) 회원과 팀을 저인하면서, 팀 이름이 teamA인 팀만 조인, 회원은 모두 조회
+    * JPQL : select m ,t from Member m left join m.team t on t.name = 'teamA'
+    * */
+    @Test
+    void joinOnFiltering() {
+        List<Tuple> result = queryFactory
+                .select(member, team)
+                .from(member)
+                .leftJoin(member.team, team).on(team.name.eq("teamA"))
+//                .join(member.team, team).on(team.name.eq("teamA")) // -> join(member.team, team).where(team.name.eq("teamA")) 와 결과가 같다.
+                .fetch();
+        for (Tuple tuple : result) {
+            System.out.println("tuple : " + tuple);
+        }
+    }
+
+    /*
+    * 연관관계 없는 엔티티 외부 조인
+    * ex) 회원의 이름과 팀의 이름이 같은 대상 '외부 조인'
+    * JPQL : select m,t from Member m left join Team t on m.userName = t.name
+    * SQL : SELECT m.*, t.* FROM Member m LEFT JOIN Team t ON m.user_name = t.name    *
+    * */
+    @Test
+    void joinOnNoRelation() {
+        em.persist(new Member("teamA"));
+        em.persist(new Member("teamB"));
+
+        List<Tuple> result = queryFactory
+                .select(member, team)
+                .from(member)
+                .leftJoin(team).on(member.userName.eq(team.name))
+                .fetch();
+
+        for (Tuple tuple : result) {
+            System.out.println("tuple : " + tuple);
+        }
+    }
+
+    /*
+    * 페치 조인
+    * 페치 조인은 SQL에서 제공하는 기능은 아니지만 SQL조인을 활용해서 연관된 엔티티를 SQL 한번에 조회하는 기능이다. 주로 성능 최적화에 사용하는 방법.
+    *
+    * */
+
+    @PersistenceUnit
+    EntityManagerFactory emf;
+
+    @Test
+    void fetchJoinNotUse() {
+        em.flush();
+        em.clear();
+
+        Member findMember = queryFactory
+                .selectFrom(member)
+                .where(member.userName.eq("member1"))
+                .fetchOne();
+        boolean loaded = emf.getPersistenceUnitUtil().isLoaded(findMember.getTeam());// 이미 로딩된 엔티티인지 결과 반환
+        assertThat(loaded).as("페치 조인 미적용").isFalse(); // 페치조인 미적용일때는 false가 나와야함.
+    }
+
+    @Test
+    void fetchJoinUse() {
+        em.flush();
+        em.clear();
+
+        Member findMember = queryFactory
+                .selectFrom(member)
+                .join(member.team, team).fetchJoin() // 사용방법은 이렇게 뒤에 페치조인을 붙여주면 된다. 페치조인은 정말 많이 사용하므로 꼭 알아둘것.
+                .where(member.userName.eq("member1"))
+                .fetchOne();
+        boolean loaded = emf.getPersistenceUnitUtil().isLoaded(findMember.getTeam()); // 이미 로딩된 엔티티인지 결과 반환
+        assertThat(loaded).as("페치 조인 적용").isTrue();
+    }
+
+
 
 }
