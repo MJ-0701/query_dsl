@@ -6,6 +6,9 @@ import com.example.querydsl.entity.QTeam;
 import com.example.querydsl.entity.Team;
 import com.querydsl.core.QueryResults;
 import com.querydsl.core.Tuple;
+import com.querydsl.core.types.dsl.CaseBuilder;
+import com.querydsl.core.types.dsl.Expressions;
+import com.querydsl.jpa.JPAExpressions;
 import com.querydsl.jpa.impl.JPAQueryFactory;
 import org.assertj.core.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
@@ -23,6 +26,7 @@ import java.util.List;
 
 import static com.example.querydsl.entity.QMember.*;
 import static com.example.querydsl.entity.QTeam.*;
+import static com.querydsl.jpa.JPAExpressions.*;
 import static org.assertj.core.api.Assertions.*;
 
 @SpringBootTest
@@ -368,6 +372,164 @@ public class QueryDslBasicTest {
         boolean loaded = emf.getPersistenceUnitUtil().isLoaded(findMember.getTeam()); // 이미 로딩된 엔티티인지 결과 반환
         assertThat(loaded).as("페치 조인 적용").isTrue();
     }
+
+    /*
+    * 서브쿼리
+    * com.querydsl.jpa.JPAExpressions 사용
+    * 나이가 가장 많은 회원 조회
+    * */
+    @Test
+    void subQuery() {
+        QMember memberSub = new QMember("memberSub");
+
+        List<Member> result = queryFactory.
+                selectFrom(member)
+                .where(member.age.eq(
+                        select(memberSub.age.max())
+                                .from(memberSub)
+                ))
+                .fetch();
+
+        assertThat(result)
+                .extracting("age")
+                .containsExactly(40);
+    }
+
+    /*
+    * 나이가 평균 이상인 회원
+    * */
+    @Test
+    void subQueryGoe() {
+        QMember memberSub = new QMember("memberSub");
+
+        List<Member> result = queryFactory.
+                selectFrom(member)
+                .where(member.age.goe(
+                        select(memberSub.age.avg())
+                                .from(memberSub)
+                ))
+                .fetch();
+
+        assertThat(result)
+                .extracting("age")
+                .containsExactly(30, 40);
+    }
+
+
+    @Test
+    void subQueryIn() {
+        QMember memberSub = new QMember("memberSub");
+
+        List<Member> result = queryFactory.
+                selectFrom(member)
+                .where(member.age.in(
+                        select(memberSub.age)
+                                .from(memberSub)
+                                .where(memberSub.age.gt(10))
+                ))
+                .fetch();
+
+        assertThat(result)
+                .extracting("age")
+                .containsExactly(20, 30, 40);
+    }
+
+    @Test
+    void selectSubQuery() {
+
+        QMember memberSub = new QMember("memberSub");
+
+        List<Tuple> result = queryFactory.select(member.userName,
+                        select(memberSub.age.avg())
+                                .from(memberSub))
+                .from(member)
+                .fetch();
+
+        for (Tuple tuple : result) {
+            System.out.println("tuple : " + tuple);
+        }
+
+    }
+
+    /*
+    * Jpa 서브쿼리 한계
+    * JPA JPQL 서브쿼리의 한계점으로 from 절의 서브쿼리(인라인 뷰)는 지원하지 않는다.
+    * 당연히 Querydsl도 지원하지 않는다. 하이버네이트 구현체를 사용하면 select절의 서브 쿼리는 지원한다.
+    * Querydsl도 하이버네이트 구현체를 사용하면 selet 절의 서브쿼리를 지원한다.
+    * form 절의 서브쿼리 해결방안 :
+    * 1. 서브쿼리를 join으로 변경한다. (간으한 상황도 있고, 불가능한 상황도 있다,)
+    * 2. 애플리케이션에서 쿼리를 2번 분리해서 실핸한다.
+    * 3. nativeSQL을 사용한다.
+    * */
+
+
+    /*
+    * Case 문
+    * select, 조건절(where)에서 사용 가능
+    * */
+    @Test
+    void basicCase() {
+
+        List<String> result = queryFactory.select(member.age
+                .when(10).then("열상")
+                .when(20).then("스무살")
+                .otherwise("기타")
+        ).from(member).fetch();
+
+        for (String s : result) {
+            System.out.println("s : " + s);
+        }
+    }
+
+    @Test
+    void complexCase() { // 웬만하면 디비에서 하지 말고 애플리케이션에서 케이스문 으로 디비에서 케이스문을 쓰는 경우는 거의 없다.
+        List<String> result = queryFactory.select(new CaseBuilder()
+                .when(member.age.between(0, 20)).then("0 ~ 20")
+                .when(member.age.between(21, 30)).then("21 ~ 30")
+                .otherwise("기타")
+        ).from(member).fetch();
+
+        for (String s : result) {
+            System.out.println("s : " + s);
+        }
+    }
+
+    /*
+    * 상수, 문자 더하기
+    * 상수가 필요하면 Expressions.constant(xxx) 사용
+    * */
+
+    @Test
+    void constant() {
+        List<Tuple> result = queryFactory.select(member.userName, Expressions.constant("A"))
+                .from(member)
+                .fetch();
+
+        for (Tuple tuple : result) {
+            System.out.println("tuple : " + tuple);
+        }
+    }
+
+    @Test
+    void concat() {
+        // userName_age
+        List<String> result = queryFactory.select(member.userName.concat("_").concat(member.age.stringValue()))
+                .from(member)
+                .where(member.userName.eq("member1"))
+                .fetch();
+
+        for (String s : result) {
+            System.out.println("s : " + s);
+        }
+    }
+
+    /*
+    * 참고 : member.age.stringValue() 부분이 중요한데, 문자가 아닌 다른 타입들은 stringValue() 로 문자로
+    * 변환할 수 있다. 이 방법은 ENUM을 처리할 떄도 자주 사용한다.
+    * */
+
+
+
 
 
 
