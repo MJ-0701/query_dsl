@@ -1,16 +1,23 @@
 package com.example.querydsl;
 
+import com.example.querydsl.controller.dto.MemberDto;
+import com.example.querydsl.controller.dto.QMemberDto;
+import com.example.querydsl.controller.dto.UserDto;
 import com.example.querydsl.entity.Member;
 import com.example.querydsl.entity.QMember;
 import com.example.querydsl.entity.QTeam;
 import com.example.querydsl.entity.Team;
+import com.querydsl.core.BooleanBuilder;
 import com.querydsl.core.QueryResults;
 import com.querydsl.core.Tuple;
+import com.querydsl.core.types.ExpressionUtils;
+import com.querydsl.core.types.Projections;
 import com.querydsl.core.types.dsl.CaseBuilder;
 import com.querydsl.core.types.dsl.Expressions;
 import com.querydsl.jpa.JPAExpressions;
 import com.querydsl.jpa.impl.JPAQueryFactory;
 import org.assertj.core.api.Assertions;
+import org.h2.util.SmallMap;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -529,8 +536,219 @@ public class QueryDslBasicTest {
     * */
 
 
+    /*
+    * 중급 문법
+    * 프로젝션과 결과 반환 - 기본
+    * 프로젝션 : select 대상 지정
+    * 프로젝션 대상이 하나면 타입을 명확하게 지정할 수 있음
+    * 프로젝션 대상이 둘 이상이면 튜플이나 DTO 로 조회
+    * */
 
+    @Test
+    void simpleProjection(){
+        // 프로젝션 대상이 하나
+        List<String> result = queryFactory.select(member.userName)
+                .from(member)
+                .fetch();
 
+        for (String s : result) {
+            System.out.println("s : " + s);
+        }
+    }
 
+    @Test
+    void tupleProjection() {
+        List<Tuple> result = queryFactory.select(member.userName, member.age)
+                .from(member)
+                .fetch();
+
+        for (Tuple tuple : result) {
+            String username = tuple.get(member.userName);
+            Integer age = tuple.get(member.age);
+
+            System.out.println("name : " + username + " age : " + age);
+        }
+    }
+        /*
+        * DTO 조회
+        * */
+
+    @Test
+    void findDtoByJPQL() {
+//        em.createQuery("select m from Member m", MemberDto.class); // -> 이렇게 조회하면 안됨
+        List<MemberDto> resultList = em.createQuery("select new com.example.querydsl.controller.dto.MemberDto(m.userName, m.age)  from Member m", MemberDto.class)
+                .getResultList();
+
+        for (MemberDto memberDto : resultList) {
+            System.out.println("memberDto = " + memberDto);
+        }
+    }
+
+    /*
+    * 순수 jPA에서 DTO를 조회할 때는 new 명령어를 사용해야함
+    * DTO package이름을 다 적어줘야 해서 지저분함
+    * 생성자 방식만 지원함
+    * */
+
+    /*
+    * Querydsl 빈 생성(Bean population)
+    * 결과 DTO 반활할 떄 사용
+    * 다음 3가지 방법 지원
+    * 프로퍼티 접근
+    * 필드 직접 접근
+    * 생성자 사용
+    * */
+
+    @Test
+    void findDtoBySetter() {
+        List<MemberDto> result = queryFactory.select(Projections.bean(MemberDto.class,
+                        member.userName,
+                        member.age))
+                .from(member)
+                .fetch();
+
+        for (MemberDto memberDto : result) {
+            System.out.println("memberDto : " + memberDto);
+        }
+    }
+
+    @Test
+    void findDtoByField() {
+        // 필드에 바로 값을 꽂아서 게터 세터가 없어도 된다.
+        List<MemberDto> result = queryFactory.select(Projections.fields(MemberDto.class,
+                        member.userName,
+                        member.age))
+                .from(member)
+                .fetch();
+
+        for (MemberDto memberDto : result) {
+            System.out.println("memberDto : " + memberDto);
+        }
+    }
+
+    @Test
+    void findDtoByConstructor() {
+        // 생성자 방식은 필드 타입이 맞아야 함.
+        List<MemberDto> result = queryFactory.select(Projections.constructor(MemberDto.class,
+                        member.userName,
+                        member.age))
+                .from(member)
+                .fetch();
+
+        for (MemberDto memberDto : result) {
+            System.out.println("memberDto : " + memberDto);
+        }
+    }
+
+    @Test
+    void findUserDtoByField() {
+        QMember memberSUb = new QMember("memberSUb");
+
+        List<UserDto> result = queryFactory.select(Projections.bean(UserDto.class,
+                        member.userName.as("name"), // dto 필드명이 다를떄는 as 로 필드명을 넣어주면 된다.
+                        ExpressionUtils.as(JPAExpressions
+                                .select(memberSUb.age.max())
+                                    .from(memberSUb),"age") // 서브쿼리를 사용하면 필드에 이름이 없으므로 ExpressionUtils 의 두번쨰 파라미터로 알리아스를 주면 필드에 매칭이 된다.
+                    )
+                )
+                .from(member)
+                .fetch();
+
+        for (UserDto memberDto : result) {
+            System.out.println("memberDto : " + memberDto);
+        }
+    }
+
+    /*
+    * 프로퍼티나 필드 접근 생성방식에서 이름이 다를 때 해결방안
+    * ExpressionUtils.as(source, alias) : 필드나, 서브쿼리 별칭 적용
+    * username.as("memberName") : 필드에 별칭 적용
+    * */
+
+    /*
+    * 생성자 사용
+    * */
+
+    @Test
+    void findDtoConstructor() {
+        List<UserDto> result = queryFactory.select(Projections.constructor(UserDto.class,
+                        member.userName,
+                        member.age))
+                .from(member)
+                .fetch();
+
+        for (UserDto userDto : result) {
+            System.out.println("memberDto : " + userDto);
+        }
+    }
+
+    /*
+    * @QueryProjection
+    * 생성자 + @QueryProjection
+    * */
+
+    @Test
+    void findDtoByQueryProjection() {
+        /*
+        * 단점
+        * 1. Q파일 생성 해야됨
+        * 2. DTO 가 Querydsl 의존성을 갖게됨. -> 아키텍처 설계 문제.
+        * */
+
+        List<MemberDto> result = queryFactory
+                .select(new QMemberDto(member.userName, member.age)) // 생성자 방식과 차이점은 생성자 방식은 런타임 오류 : 실행을 해야만 오류 쿼리 프로젝션 : 컴파일 오류 실행 전에 오류를 잡아줌.
+                .distinct() // distinct() 중복제거 사용방법은 JPQL과 같다.
+                .from(member)
+                .fetch();
+
+        for (MemberDto memberDto : result) {
+            System.out.println("memberDto : " + memberDto);
+        }
+    }
+
+    /*
+    * 동적 쿼리를 해결하는 두가지 방식
+    * BooleanBuilder
+    * Where 다중 파라미터 사용
+    * */
+    @Test
+    public void dynamicQueryBooleanBuilder() throws Exception {
+
+        // given
+        String userNameParam = "member1";
+//        Integer ageParam = null;
+        Integer ageParam = 10;
+
+        // wheen
+        List<Member> result = searchMember1(userNameParam, ageParam);
+
+        // then
+        assertThat(result.size()).isEqualTo(1);
+    }
+
+    private List<Member> searchMember1(String userNameCond, Integer ageCond) {
+
+        BooleanBuilder builder = new BooleanBuilder();
+
+        if (userNameCond != null) {
+            builder.and(member.userName.eq(userNameCond));
+        }
+
+        if(ageCond != null) {
+            builder.and(member.age.eq(ageCond));
+        }
+
+        return queryFactory
+                .selectFrom(member)
+                .where(builder)
+                .fetch();
+    }
 
 }
+
+
+
+
+
+
+
