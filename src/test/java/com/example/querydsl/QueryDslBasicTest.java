@@ -11,7 +11,9 @@ import com.querydsl.core.BooleanBuilder;
 import com.querydsl.core.QueryResults;
 import com.querydsl.core.Tuple;
 import com.querydsl.core.types.ExpressionUtils;
+import com.querydsl.core.types.Predicate;
 import com.querydsl.core.types.Projections;
+import com.querydsl.core.types.dsl.BooleanExpression;
 import com.querydsl.core.types.dsl.CaseBuilder;
 import com.querydsl.core.types.dsl.Expressions;
 import com.querydsl.jpa.JPAExpressions;
@@ -743,6 +745,158 @@ public class QueryDslBasicTest {
                 .where(builder)
                 .fetch();
     }
+    /*
+    * 이 방법을 좀 더 선호
+    * */
+    @Test
+    public void dynamicQueryWhereParam() throws Exception {
+
+        // given
+        String userNameParam = "member1";
+        Integer ageParam = null;
+//        Integer ageParam = 10;
+
+        // when
+        List<Member> result = searchMember1(userNameParam, ageParam);
+
+        // then
+        assertThat(result.size()).isEqualTo(1);
+    }
+
+    private List<Member> searchMember2(String userNameCond, Integer ageCond) {
+
+        return queryFactory
+                .selectFrom(member)
+                .where(userNameEq(userNameCond), ageEq(ageCond))
+//                .where(allEq(userNameCond,ageCond)) // -> 이렇게 쓰려면 null 처리를 해당 메소드 에서도 따로 해줘야됨.
+                .fetch();
+    }
+
+    private BooleanExpression userNameEq(String userNameCond) {
+
+        return userNameCond != null ? member.userName.eq(userNameCond) : null;
+    }
+
+    private BooleanExpression ageEq(Integer ageCond) {
+
+        return ageCond != null ? member.age.eq(ageCond) : null;
+    }
+
+    /*
+    * ex) 광고 상태 isValid, 날짜가 IN : isServiceAble -> 장점 : 재활용이 된다 다른 쿼리에서도 해당 메서드 사용 가능.
+    * 쿼리 자체의 가독성이 높아진다.
+    * 조합이 가능하다.
+    * 다만 null 은 주의해서 체크 해야됨.
+    * */
+
+    private BooleanExpression allEq(String userNameCond, Integer ageCond) {
+        // null 처리 따로 해줘야됨.
+        return userNameEq(userNameCond).and(ageEq(ageCond));
+    }
+
+    /*
+    * 수정, 삭제 등을 한번에 벌크로 처리하는 배치쿼리
+    * 쿼리 한번으로 대량 데이터 수정
+    *
+    * */
+
+    @Test
+    public void bulkUpdate() throws Exception {
+
+        // member1 = 10 -> DB member1
+        // member2 = 10 -> DB member2
+        // member3 = 10 -> DB member3
+        // member4 = 10 -> DB member4
+
+        // given
+        long count = queryFactory.update(member) // member1 , member2 -> 비회원
+                .set(member.userName, "비회원")
+                .where(member.age.lt(28))
+                .execute();
+        // when
+        // 벌크 연산을 실행한 후에 초기화를 해주고 조회 해줘야됨.
+        em.flush();
+        em.clear();
+
+        // 쿼리 실행 후 -> 영속성 컨텍스트에는 아직 member1, member2 로 남아 있으나 bulk 연산은 디비 값을 바로 변경한다. -> 둘이 상태가 안맞는다.
+        // member1 = 10 -> DB 비횓원
+        // member2 = 10 -> DB 비회원
+        // member3 = 10 -> DB member3
+        // member4 = 10 -> DB member4
+
+        // 영속성 컨텍스트와 db 값이 안맞으면 db값이 변경 돼 있어도 영속성 컨텍스트 값을 가져온다.
+        List<Member> result = queryFactory.selectFrom(member).fetch();
+        for (Member member1 : result) {
+            System.out.println("member : " + member1);
+        }
+        // then
+    }
+
+    @Test
+    public void bulkAdd() throws Exception {
+        // given
+        queryFactory.update(member)
+//                .set(member.age, member.age.add(1)) // 모든 회원의 나이를 1살 더하기 -를 하고싶을땐 1대신 -1
+                .set(member.age, member.age.multiply(2)) // 곱하기
+                .execute();
+
+        // when
+
+        // then
+    }
+
+    @Test
+    public void bulkDelete() throws Exception {
+        // given
+        long count = queryFactory.delete(member)
+                .where(member.age.gt(18)) // 18살 이상의 모든 회원 삭제
+                .execute();
+
+        // when
+
+        // then
+    }
+
+    /*
+    * SQL function 호출하기
+    * SQL function은 JPA와 같이 Dialect에 등록된 내용만 호출할 수 있다.
+    * */
+    @Test
+    public void callFunction() throws Exception {
+        // member -> M으로 변경하는 replace 함수 사용
+        // given
+        // dialect에 등록되지 않아서 직접 등록 해야되는 경우에는 해당 DB의 Dialect 클래스를 상속 받은 custom Class 를 만들어서 yml jpa 설정에서 따로 등록을 해줘야 한다.
+        List<String> result = queryFactory
+                .select(Expressions.stringTemplate(  // mysql replace 펑션 등록 안돼있음.
+                        "function('REPLACE', {0}, {1}, {2})",
+                        member.userName, "member", "M"))
+                .from(member)
+                .fetch();
+        // when
+        for (String s : result) {
+            System.out.println("s : " + s);
+        }
+        // then
+    }
+
+    @Test
+    public void callFunction2() throws Exception {
+        // given
+        List<String> result = queryFactory.select(member.userName)
+                .from(member)
+//                .where(member.userName.eq(Expressions.stringTemplate(
+//                        "function('lower', {0})", member.userName)))
+                .where(member.userName.eq(member.userName.lower())) // Ansi 표준에 있는 기본적인 함수들은 쿼리dsl도 내장하고 있음.
+                .fetch();
+        // when
+        for (String s : result) {
+            System.out.println("s : " + s);
+        }
+
+        // then
+    }
+
+
 
 }
 
