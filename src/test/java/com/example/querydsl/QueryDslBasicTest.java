@@ -894,6 +894,7 @@ public class QueryDslBasicTest {
         }
 
         // then
+        // ,
     }
 
 
