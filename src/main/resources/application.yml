@@ -3,6 +3,10 @@ server:
 
 spring:
 
+  # 샘플 데이터 설정
+  profiles:
+    active: local
+
   # file
   servlet:
     multipart:
