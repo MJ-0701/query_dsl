@@ -1,30 +1,38 @@
  spring:
+  profiles: p6spy
 
   # jpa
+#  jpa:
+#    hibernate:
+#      ddl-auto: 'create'
+#    properties:
+#      hibernate:
+#        format_sql: true
+#    generate-ddl: true
+#    defer-datasource-initialization: true
+#    database: mysql
+
   jpa:
     hibernate:
-      ddl-auto: 'create'
+      ddl-auto: create
     properties:
       hibernate:
-        use_sql_comments: true
         format_sql: true
-#        show_sql: true # system 로그로 출력 -> 가급적 로그로 출력할것.
-
-    generate-ddl: true
-    defer-datasource-initialization: true
-    database: mysql
 
   # DB
+ decorator:
   datasource:
     url: jdbc:mysql://localhost:3306/query_dsl?useSSl=false&useUnicode=true&serverTimezone=Asia/Seoul&allowPublicKeyRetrieval=true&createDatabaseIfNotExist=true
     driver-class-name: com.mysql.cj.jdbc.Driver
     username: jack
     password: jack
+    p6spy:
+      enable-logging: true
 
  logging:
    level:
      org.hibernate.sql: debug
-#     org.hibernate.type: trace
+     org.hibernate.type: trace
 
 #  sql:
 #    init:

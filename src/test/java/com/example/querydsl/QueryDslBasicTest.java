@@ -152,6 +152,18 @@ public class QueryDslBasicTest {
         long total = queryFactory.selectFrom(member).fetchCount();
 
     }
+
+    // Querydsl5 count 쿼리
+    @Test
+    public void count() {
+        Long totalCount = queryFactory
+                //.select(Wildcard.count) //select count(*)
+                .select(member.count()) //select count(member.id)
+                .from(member)
+                .fetchOne();
+        System.out.println("totalCount = " + totalCount);
+    }
+
     /**
      * 1. 회원 나이 내림차순(desc)
      * 2. 회원 이름 올림차순(asc)
